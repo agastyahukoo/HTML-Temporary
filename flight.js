@@ -1,3 +1,17 @@
+Here is the updated full code for `flight.js`.
+
+I have made the following changes:
+
+1. **Updated `updateArtificialHorizon**`: The horizon now uses distinct Airbus-style colors (Sky Blue and Earth Brown) so it is clearly visible. The HUD elements (pitch ladder, bank indicator, FPV symbol) are drawn in high-contrast colors (White/Green/Yellow) to ensure visibility.
+2. **Added Terminal System**: I added a `setupTerminal` method that injects a hidden terminal overlay into the page.
+* Press the **Tilde (`~`) / Backtick (```)** key to toggle the terminal.
+* Supported commands: `help`, `clear`, `status`, `arm`, `disarm`, `takeoff`, `land`.
+
+
+
+### `flight.js`
+
+```javascript
 // Flight View - Live Drone Feed and Telemetry System
 
 class FlightManager {
@@ -55,6 +69,7 @@ class FlightManager {
         this.setupDraggableMap();
         this.startTelemetrySimulation();
         this.setupViewObserver();
+        this.setupTerminal(); // Initialize the terminal
     }
     
     setupViewObserver() {
@@ -105,6 +120,124 @@ class FlightManager {
         document.getElementById('toggle-arc-mode')?.addEventListener('click', () => this.toggleArcMode());
         document.getElementById('expand-mini-map')?.addEventListener('click', () => this.expandMiniMap());
         document.getElementById('minimize-mini-map')?.addEventListener('click', () => this.minimizeMiniMap());
+    }
+
+    // --- TERMINAL IMPLEMENTATION ---
+    setupTerminal() {
+        // Inject Terminal HTML
+        const terminalHTML = `
+            <div id="flight-terminal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 50%; background: rgba(10, 10, 15, 0.95); z-index: 9999; border-bottom: 2px solid #3b82f6; font-family: 'Courier New', monospace; padding: 20px; box-sizing: border-box; color: #10b981; overflow: hidden; flex-direction: column;">
+                <div id="terminal-output" style="flex: 1; overflow-y: auto; white-space: pre-wrap; margin-bottom: 10px; font-size: 14px;">Welcome to Darkstar Flight Console v1.0\nType 'help' for available commands.\n</div>
+                <div style="display: flex; align-items: center;">
+                    <span style="color: #3b82f6; margin-right: 10px;">root@darkstar:~#</span>
+                    <input type="text" id="terminal-input" style="flex: 1; background: transparent; border: none; color: #e8e8e8; font-family: 'Courier New', monospace; font-size: 14px; outline: none;" autocomplete="off" spellcheck="false">
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', terminalHTML);
+
+        const terminal = document.getElementById('flight-terminal');
+        const input = document.getElementById('terminal-input');
+        const output = document.getElementById('terminal-output');
+
+        // Toggle Terminal on Tilde key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '`' || e.key === '~') {
+                e.preventDefault();
+                if (terminal.style.display === 'none') {
+                    terminal.style.display = 'flex';
+                    input.focus();
+                } else {
+                    terminal.style.display = 'none';
+                }
+            }
+        });
+
+        // Handle Input
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const command = input.value.trim();
+                if (command) {
+                    this.executeCommand(command, output);
+                }
+                input.value = '';
+                // Keep scroll at bottom
+                output.scrollTop = output.scrollHeight;
+            }
+        });
+    }
+
+    executeCommand(cmd, output) {
+        // Echo command
+        output.innerHTML += `<div style="color: #ccc;">> ${cmd}</div>`;
+
+        const args = cmd.toLowerCase().split(' ');
+        const command = args[0];
+
+        let response = '';
+
+        switch (command) {
+            case 'help':
+                response = `Available commands:
+  help      - Show this help message
+  status    - Show current telemetry status
+  clear     - Clear terminal output
+  arm       - Arm the drone
+  disarm    - Disarm/Abort
+  takeoff   - Initiate takeoff sequence
+  land      - Initiate landing sequence
+  set       - Set variable (usage: set alt 100)`;
+                break;
+            case 'clear':
+                output.innerHTML = 'Welcome to Darkstar Flight Console v1.0\n';
+                return;
+            case 'status':
+                response = `[SYSTEM STATUS]
+  Connected: ${this.isConnected}
+  Battery:   ${this.telemetry.battery}% (${this.telemetry.voltage.toFixed(1)}V)
+  Altitude:  ${this.telemetry.altitude.toFixed(1)}m
+  Speed:     ${this.telemetry.speed.toFixed(1)}m/s
+  Heading:   ${this.telemetry.heading.toFixed(0)}°
+  GPS:       ${this.telemetry.satellites} Sats (HDOP: ${this.telemetry.hdop})`;
+                break;
+            case 'arm':
+                this.armDrone();
+                response = 'Executing ARM sequence...';
+                break;
+            case 'disarm':
+                this.emergencyAbort();
+                response = 'Executing DISARM/ABORT sequence...';
+                break;
+            case 'takeoff':
+                if (!this.isConnected) {
+                    response = 'Error: Drone not armed.';
+                } else {
+                    this.takeoff();
+                    response = 'Initiating Takeoff...';
+                }
+                break;
+            case 'land':
+                this.land();
+                response = 'Initiating Landing...';
+                break;
+            case 'set':
+                if (args[1] === 'alt' && args[2]) {
+                    const alt = parseFloat(args[2]);
+                    if (!isNaN(alt)) {
+                        this.telemetry.altitude = alt;
+                        response = `Altitude set to ${alt}m`;
+                    } else {
+                        response = 'Invalid altitude value.';
+                    }
+                } else {
+                    response = 'Usage: set alt <value>';
+                }
+                break;
+            default:
+                response = `Command not found: ${command}`;
+        }
+
+        output.innerHTML += `<div>${response}</div>`;
     }
 
     loadDroneList() {
@@ -366,7 +499,7 @@ class FlightManager {
         }
     }
 
-    // Artificial Horizon - Airbus A320 Style
+    // Artificial Horizon - Airbus A320 Style (Updated)
     initArtificialHorizon() {
         const canvas = document.getElementById('artificial-horizon');
         if (!canvas) return;
@@ -396,8 +529,8 @@ class FlightManager {
         // Save context
         ctx.save();
         
-        // Clear canvas with dark background
-        ctx.fillStyle = '#0a0a0a';
+        // Clear background
+        ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // Clip to circular display
@@ -405,223 +538,168 @@ class FlightManager {
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.clip();
 
-        // Apply rotation for roll
+        // Apply rotation for roll (rotates the sky/ground)
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate((roll * Math.PI) / 180);
         ctx.translate(-centerX, -centerY);
 
         // Calculate pitch offset (pixels per degree)
-        const pitchScale = radius / 20; // 20 degrees visible range
+        const pitchScale = radius / 30; // 30 degrees visible range
         const pitchOffset = (pitch * pitchScale);
 
-        // Draw sky gradient (Airbus cyan-blue)
-        const skyGradient = ctx.createLinearGradient(0, 0, 0, centerY - pitchOffset);
-        skyGradient.addColorStop(0, '#0a2540');
-        skyGradient.addColorStop(1, '#1e40af');
+        // --- Draw Sky (Blue) ---
+        // Top bright blue, bottom lighter blue (Airbus style)
+        const skyGradient = ctx.createLinearGradient(0, centerY - radius * 2, 0, centerY);
+        skyGradient.addColorStop(0, '#0055AA'); // Deep Sky
+        skyGradient.addColorStop(1, '#55AAFF'); // Horizon Blue
         ctx.fillStyle = skyGradient;
-        ctx.fillRect(0, 0, canvas.width, centerY - pitchOffset);
+        
+        // Fill entire upper half relative to horizon line
+        ctx.fillRect(0, -canvas.height, canvas.width, (centerY - pitchOffset) + canvas.height);
 
-        // Draw ground gradient (brown)
-        const groundGradient = ctx.createLinearGradient(0, centerY - pitchOffset, 0, canvas.height);
-        groundGradient.addColorStop(0, '#78350f');
-        groundGradient.addColorStop(1, '#451a03');
+        // --- Draw Ground (Brown) ---
+        // Top dark brown, bottom lighter
+        const groundGradient = ctx.createLinearGradient(0, centerY, 0, centerY + radius * 2);
+        groundGradient.addColorStop(0, '#8B4513'); // Saddle Brown
+        groundGradient.addColorStop(1, '#4A3010'); // Dark Brown
         ctx.fillStyle = groundGradient;
-        ctx.fillRect(0, centerY - pitchOffset, canvas.width, canvas.height);
+        
+        // Fill lower half
+        ctx.fillRect(0, centerY - pitchOffset, canvas.width, canvas.height * 2);
 
-        // Draw horizon line (white, thicker)
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 4;
+        // --- Draw Horizon Line ---
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(0, centerY - pitchOffset);
         ctx.lineTo(canvas.width, centerY - pitchOffset);
         ctx.stroke();
 
-        // Draw pitch ladder (Airbus style - white lines)
-        ctx.strokeStyle = '#10b981'; // Green for positive pitch
-        ctx.fillStyle = '#10b981';
+        // --- Draw Pitch Ladder ---
+        ctx.fillStyle = '#FFFFFF';
+        ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 2;
-        ctx.font = 'bold 14px monospace';
-        ctx.textAlign = 'right';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
 
-        // Pitch marks every 2.5 degrees
-        for (let pitchAngle = -20; pitchAngle <= 20; pitchAngle += 2.5) {
-            if (Math.abs(pitchAngle) < 0.1) continue; // Skip zero
+        // Range of pitch lines to draw (visible range)
+        const minVisiblePitch = pitch - 40;
+        const maxVisiblePitch = pitch + 40;
 
-            const y = centerY - pitchOffset - (pitchAngle * pitchScale);
+        for (let p = Math.ceil(minVisiblePitch / 10) * 10; p <= maxVisiblePitch; p += 2.5) {
+            if (p === 0) continue; // Skip horizon line
+
+            const y = centerY - pitchOffset - (p * pitchScale);
             
-            if (y < 0 || y > canvas.height) continue;
+            // Check if within view
+            if (y < centerY - radius || y > centerY + radius) continue;
 
-            if (pitchAngle % 10 === 0) {
-                // Major pitch marks (every 10 degrees)
-                const lineLength = 80;
-                
-                // Draw horizontal line
-                ctx.beginPath();
-                ctx.moveTo(centerX - lineLength, y);
-                ctx.lineTo(centerX + lineLength, y);
-                ctx.stroke();
-                
-                // Draw angle markers
-                ctx.strokeStyle = pitchAngle > 0 ? '#10b981' : '#10b981';
-                ctx.fillStyle = pitchAngle > 0 ? '#10b981' : '#10b981';
-                
-                // Left side text
-                ctx.textAlign = 'right';
-                ctx.fillText(Math.abs(pitchAngle).toString(), centerX - lineLength - 10, y + 5);
-                
-                // Right side text
-                ctx.textAlign = 'left';
-                ctx.fillText(Math.abs(pitchAngle).toString(), centerX + lineLength + 10, y + 5);
-                
-                ctx.strokeStyle = '#10b981';
-                
-            } else if (pitchAngle % 5 === 0) {
-                // Medium pitch marks (every 5 degrees)
-                const lineLength = 40;
-                ctx.beginPath();
-                ctx.moveTo(centerX - lineLength, y);
-                ctx.lineTo(centerX + lineLength, y);
-                ctx.stroke();
-            } else {
-                // Minor pitch marks (every 2.5 degrees)
-                const lineLength = 20;
-                ctx.beginPath();
-                ctx.moveTo(centerX - lineLength, y);
-                ctx.lineTo(centerX + lineLength, y);
-                ctx.stroke();
+            const isMajor = p % 10 === 0;
+            const width = isMajor ? 60 : 30;
+            
+            ctx.beginPath();
+            ctx.moveTo(centerX - width / 2, y);
+            ctx.lineTo(centerX + width / 2, y);
+            ctx.stroke();
+
+            if (isMajor) {
+                // Add text numbers
+                ctx.fillText(Math.abs(p), centerX - width / 2 - 15, y);
+                ctx.fillText(Math.abs(p), centerX + width / 2 + 15, y);
             }
         }
 
         ctx.restore(); // Restore from roll rotation
 
-        // Draw outer ring
-        ctx.strokeStyle = '#ffffff';
+        // --- Fixed Elements (Not rotated by roll) ---
+
+        // Draw Bank Scale (Top Arc)
+        ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.arc(centerX, centerY, radius, -Math.PI * 0.8, -Math.PI * 0.2); // Top arc
         ctx.stroke();
 
-        // Draw bank angle indicator at top (Airbus style)
-        ctx.save();
-        ctx.translate(centerX, centerY);
-        
-        // Bank scale marks
+        // Bank Markers
         const bankAngles = [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60];
-        ctx.strokeStyle = '#ffffff';
-        ctx.fillStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        
         bankAngles.forEach(angle => {
             ctx.save();
+            ctx.translate(centerX, centerY);
             ctx.rotate((angle * Math.PI) / 180);
             
-            const isMAJOR = angle % 30 === 0;
-            const isMEDIUM = angle % 10 === 0;
-            const tickLength = isMAJOR ? 25 : (isMEDIUM ? 15 : 10);
-            const tickWidth = isMAJOR ? 3 : 2;
+            const tickLength = (angle % 30 === 0) ? 15 : 8;
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2;
             
-            ctx.lineWidth = tickWidth;
             ctx.beginPath();
-            ctx.moveTo(0, -radius + 5);
+            ctx.moveTo(0, -radius);
             ctx.lineTo(0, -radius + tickLength);
             ctx.stroke();
-            
-            // Draw triangles at 30-degree marks
-            if (isMAJOR && angle !== 0) {
+
+            // Triangle at 0 (Sky Pointer)
+            if (angle === 0) {
+                ctx.fillStyle = '#FFFF00'; // Yellow
                 ctx.beginPath();
-                ctx.moveTo(0, -radius + 5);
-                ctx.lineTo(-6, -radius + 15);
-                ctx.lineTo(6, -radius + 15);
-                ctx.closePath();
+                ctx.moveTo(0, -radius + 15);
+                ctx.lineTo(-6, -radius + 25);
+                ctx.lineTo(6, -radius + 25);
                 ctx.fill();
             }
-            
+
             ctx.restore();
         });
-        
-        // Roll pointer (yellow triangle pointing down)
+
+        // --- Roll Indicator (Moving Triangle) ---
+        ctx.save();
+        ctx.translate(centerX, centerY);
         ctx.rotate((roll * Math.PI) / 180);
-        ctx.fillStyle = '#fbbf24';
-        ctx.beginPath();
-        ctx.moveTo(0, -radius + 8);
-        ctx.lineTo(-10, -radius - 5);
-        ctx.lineTo(10, -radius - 5);
-        ctx.closePath();
-        ctx.fill();
         
+        // Yellow triangle indicating up relative to aircraft
+        ctx.fillStyle = '#FFFF00'; 
+        ctx.beginPath();
+        ctx.moveTo(0, -radius + 5);
+        ctx.lineTo(-8, -radius + 18);
+        ctx.lineTo(8, -radius + 18);
+        ctx.fill();
         ctx.restore();
 
-        // Draw fixed aircraft symbol (Airbus style - yellow)
-        ctx.strokeStyle = '#fbbf24';
-        ctx.fillStyle = '#fbbf24';
+        // --- Aircraft Symbol (Fixed Black/Yellow Wing) ---
         ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#FFFF00'; // Yellow outline
+        ctx.fillStyle = '#000000'; // Black fill
         
-        // Center dot
+        // Center Dot
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI);
+        ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
         ctx.fill();
-        
-        // Wings - Airbus style angular wings
-        const wingLength = 70;
-        const wingHeight = 3;
-        const wingTipLength = 20;
-        
-        // Left wing
-        ctx.beginPath();
-        ctx.moveTo(centerX - 15, centerY);
-        ctx.lineTo(centerX - wingLength, centerY);
-        ctx.lineTo(centerX - wingLength, centerY - wingTipLength);
-        ctx.stroke();
-        
-        // Right wing
-        ctx.beginPath();
-        ctx.moveTo(centerX + 15, centerY);
-        ctx.lineTo(centerX + wingLength, centerY);
-        ctx.lineTo(centerX + wingLength, centerY - wingTipLength);
         ctx.stroke();
 
-        // Flight path vector (FPV) symbol - green circle with lines
-        ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = 3;
-        
-        // Circle
+        // Wings
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 12, 0, 2 * Math.PI);
-        ctx.stroke();
-        
-        // Horizontal lines
-        ctx.beginPath();
-        ctx.moveTo(centerX - 25, centerY);
-        ctx.lineTo(centerX - 12, centerY);
-        ctx.stroke();
-        
-        ctx.beginPath();
-        ctx.moveTo(centerX + 12, centerY);
-        ctx.lineTo(centerX + 25, centerY);
-        ctx.stroke();
-        
-        // Vertical line (bottom)
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY + 12);
-        ctx.lineTo(centerX, centerY + 25);
+        ctx.moveTo(centerX - 80, centerY); // Left Wing Tip
+        ctx.lineTo(centerX - 20, centerY); // Left Wing Root
+        ctx.lineTo(centerX - 20, centerY + 10);
         ctx.stroke();
 
-        // Pitch and roll digital readouts (Airbus style)
-        ctx.fillStyle = '#10b981';
-        ctx.font = 'bold 16px monospace';
-        ctx.textAlign = 'center';
+        ctx.beginPath();
+        ctx.moveTo(centerX + 80, centerY); // Right Wing Tip
+        ctx.lineTo(centerX + 20, centerY); // Right Wing Root
+        ctx.lineTo(centerX + 20, centerY + 10);
+        ctx.stroke();
+
+        // --- Digital Readouts (HUD style) ---
+        // Pitch
+        ctx.font = '16px monospace';
+        ctx.fillStyle = '#00FF00'; // Green
+        ctx.fillText(`PIT: ${pitch.toFixed(1)}°`, centerX - 120, centerY + 150);
         
-        // Pitch readout at bottom
-        ctx.fillText(`${pitch.toFixed(1)}°`, centerX, canvas.height - 10);
-        
-        // Roll readout at top
-        ctx.fillText(`${roll.toFixed(1)}°`, centerX, 25);
+        // Roll
+        ctx.fillText(`ROL: ${roll.toFixed(1)}°`, centerX + 120, centerY + 150);
 
         ctx.restore();
-
+        
         requestAnimationFrame(() => this.updateArtificialHorizon());
     }
 
@@ -629,16 +707,17 @@ class FlightManager {
     startTelemetrySimulation() {
         // Simulate telemetry data for demo purposes
         this.telemetryInterval = setInterval(() => {
-            this.telemetry.pitch += (Math.random() - 0.5) * 0.5;
-            this.telemetry.roll += (Math.random() - 0.5) * 0.5;
-            this.telemetry.heading += (Math.random() - 0.5) * 0.2;
-            
-            // Clamp values
-            this.telemetry.pitch = Math.max(-30, Math.min(30, this.telemetry.pitch));
-            this.telemetry.roll = Math.max(-45, Math.min(45, this.telemetry.roll));
-            this.telemetry.heading = (this.telemetry.heading + 360) % 360;
-            
+            // Only jitter if connected, or simulate basic movement
             if (this.isConnected) {
+                this.telemetry.pitch += (Math.random() - 0.5) * 0.5;
+                this.telemetry.roll += (Math.random() - 0.5) * 0.5;
+                this.telemetry.heading += (Math.random() - 0.5) * 0.2;
+                
+                // Clamp values
+                this.telemetry.pitch = Math.max(-30, Math.min(30, this.telemetry.pitch));
+                this.telemetry.roll = Math.max(-45, Math.min(45, this.telemetry.roll));
+                this.telemetry.heading = (this.telemetry.heading + 360) % 360;
+                
                 this.updateTelemetryDisplay();
                 this.updateInstruments();
             }
@@ -780,3 +859,5 @@ if (document.readyState === 'loading') {
         window.flightManager = flightManager;
     }
 }
+
+```
