@@ -5,13 +5,13 @@ class FlightManager {
         this.selectedDrone = null;
         this.selectedMission = null;
         this.isConnected = false;
-        this.telemetryInterval = null;
+        this.flightLoop = null;
         this.flightStartTime = null;
         this.activeCameraStream = null;
         
         this.telemetry = {
-            lat: 0,
-            lng: 0,
+            lat: 37.7749,
+            lng: -122.4194,
             altitude: 0,
             speed: 0,
             heading: 0,
@@ -19,12 +19,25 @@ class FlightManager {
             roll: 0,
             vspeed: 0,
             battery: 100,
-            voltage: 0,
+            voltage: 24.0,
             current: 0,
             distanceHome: 0,
             satellites: 0,
-            hdop: 0,
+            hdop: 1.0,
             rcSignal: 0
+        };
+
+        this.inputs = {
+            pitch: 0,
+            roll: 0,
+            yaw: 0,
+            throttle: 0
+        };
+
+        this.warnings = {
+            lastBankWarning: 0,
+            lastSinkWarning: 0,
+            lastTerrainWarning: 0
         };
         
         this.miniMap = null;
@@ -45,12 +58,13 @@ class FlightManager {
 
     setup() {
         this.setupEventListeners();
+        this.setupInputListeners();
         this.loadDroneList();
         this.loadMissionList();
         this.initMiniMap();
         this.initArtificialHorizon();
         this.setupDraggableMap();
-        this.startTelemetrySimulation();
+        this.startFlightLoop();
         this.setupViewObserver();
         this.initCameraSystem();
         this.setupResizablePanels();
@@ -223,6 +237,81 @@ class FlightManager {
         document.getElementById('toggle-arc-mode')?.addEventListener('click', () => this.toggleArcMode());
         document.getElementById('expand-mini-map')?.addEventListener('click', () => this.expandMiniMap());
         document.getElementById('minimize-mini-map')?.addEventListener('click', () => this.minimizeMiniMap());
+    }
+
+    setupInputListeners() {
+        window.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp': this.inputs.pitch = -1; break;
+                case 'ArrowDown': this.inputs.pitch = 1; break;
+                case 'ArrowLeft': this.inputs.roll = -1; break;
+                case 'ArrowRight': this.inputs.roll = 1; break;
+                case 'w': case 'W': this.inputs.throttle = 1; break;
+                case 's': case 'S': this.inputs.throttle = -1; break;
+                case 'a': case 'A': this.inputs.yaw = -1; break;
+                case 'd': case 'D': this.inputs.yaw = 1; break;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            switch(e.key) {
+                case 'ArrowUp': 
+                case 'ArrowDown': this.inputs.pitch = 0; break;
+                case 'ArrowLeft': 
+                case 'ArrowRight': this.inputs.roll = 0; break;
+                case 'w': case 'W': 
+                case 's': case 'S': this.inputs.throttle = 0; break;
+                case 'a': case 'A': 
+                case 'd': case 'D': this.inputs.yaw = 0; break;
+            }
+        });
+    }
+
+    updateInputs() {
+        const gamepads = navigator.getGamepads();
+        const gp = gamepads[0]; 
+
+        if (gp) {
+            this.inputs.yaw = Math.abs(gp.axes[0]) > 0.1 ? gp.axes[0] : 0;
+            this.inputs.throttle = Math.abs(gp.axes[1]) > 0.1 ? -gp.axes[1] : 0;
+            this.inputs.roll = Math.abs(gp.axes[2]) > 0.1 ? gp.axes[2] : 0;
+            this.inputs.pitch = Math.abs(gp.axes[3]) > 0.1 ? gp.axes[3] : 0;
+        }
+    }
+
+    checkWarnings() {
+        if (!this.isConnected) return;
+        const now = Date.now();
+
+        if (Math.abs(this.telemetry.roll) > 35) {
+            if (now - this.warnings.lastBankWarning > 3000) {
+                this.speak("Bank Angle");
+                this.warnings.lastBankWarning = now;
+            }
+        }
+
+        if (this.telemetry.vspeed < -5.0) {
+            if (now - this.warnings.lastSinkWarning > 2000) {
+                this.speak("Sink Rate");
+                this.warnings.lastSinkWarning = now;
+            }
+        }
+
+        if (this.telemetry.altitude < 30 && this.telemetry.vspeed < -3.0) {
+             if (now - this.warnings.lastTerrainWarning > 2000) {
+                this.speak("Terrain, Pull Up");
+                this.warnings.lastTerrainWarning = now;
+            }
+        }
+    }
+
+    speak(text) {
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.1;
+            utterance.pitch = 0.9;
+            window.speechSynthesis.speak(utterance);
+        }
     }
 
     loadDroneList() {
@@ -831,23 +920,48 @@ class FlightManager {
         requestAnimationFrame(() => this.updateArtificialHorizon());
     }
 
-    startTelemetrySimulation() {
-        this.telemetryInterval = setInterval(() => {
+    startFlightLoop() {
+        this.flightLoop = setInterval(() => {
+            this.updateInputs();
+            
             if (this.isConnected) {
-                this.telemetry.pitch += (Math.random() - 0.5) * 0.5;
-                this.telemetry.roll += (Math.random() - 0.5) * 0.5;
-                this.telemetry.heading += (Math.random() - 0.5) * 0.2;
-                this.telemetry.speed = Math.max(0, this.telemetry.speed + (Math.random() - 0.4));
-                this.telemetry.altitude = Math.max(0, this.telemetry.altitude + (Math.random() - 0.4));
-                
+                this.telemetry.pitch += this.inputs.pitch * 2;
+                this.telemetry.roll += this.inputs.roll * 2;
+                this.telemetry.heading += this.inputs.yaw * 2;
+                this.telemetry.altitude += this.inputs.throttle * 0.5;
+
+                this.telemetry.pitch *= 0.95;
+                this.telemetry.roll *= 0.95;
+
                 this.telemetry.pitch = Math.max(-30, Math.min(30, this.telemetry.pitch));
-                this.telemetry.roll = Math.max(-45, Math.min(45, this.telemetry.roll));
+                this.telemetry.roll = Math.max(-60, Math.min(60, this.telemetry.roll));
                 this.telemetry.heading = (this.telemetry.heading + 360) % 360;
                 
+                this.telemetry.vspeed = this.inputs.throttle * 5;
+                
+                if (this.inputs.throttle > 0) {
+                     this.telemetry.speed = Math.min(30, this.telemetry.speed + 0.1);
+                } else if (this.inputs.throttle < 0) {
+                     this.telemetry.speed = Math.max(0, this.telemetry.speed - 0.1);
+                }
+
+                this.checkWarnings();
                 this.updateTelemetryDisplay();
                 this.updateInstruments();
+                
+                // Update position based on heading/speed
+                if (this.telemetry.speed > 0) {
+                    const rad = (90 - this.telemetry.heading) * Math.PI / 180;
+                    this.telemetry.lat += Math.sin(rad) * 0.00001;
+                    this.telemetry.lng += Math.cos(rad) * 0.00001;
+                    
+                    if (this.droneMarker) {
+                         this.droneMarker.setLatLng([this.telemetry.lat, this.telemetry.lng]);
+                         if (this.miniMap) this.miniMap.panTo([this.telemetry.lat, this.telemetry.lng]);
+                    }
+                }
             }
-        }, 100);
+        }, 50);
     }
 
     updateTelemetryDisplay() {
@@ -898,6 +1012,8 @@ class FlightManager {
         this.telemetry.hdop = 0.8;
         this.telemetry.rcSignal = 98;
         this.updateTelemetryDisplay();
+        
+        this.speak("System Armed");
     }
 
     takeoff() {
@@ -907,31 +1023,22 @@ class FlightManager {
         document.getElementById('takeoff-btn').disabled = true;
         document.getElementById('land-btn').disabled = false;
         
-        const takeoffInterval = setInterval(() => {
-            this.telemetry.altitude += 1;
-            if (this.telemetry.altitude >= 50) {
-                clearInterval(takeoffInterval);
-            }
-        }, 100);
+        this.inputs.throttle = 1; 
+        setTimeout(() => this.inputs.throttle = 0, 3000); 
+        
+        this.speak("Takeoff initiated");
     }
 
     land() {
         document.getElementById('flight-drone-status').textContent = 'Landing';
-        
-        const landInterval = setInterval(() => {
-            this.telemetry.altitude = Math.max(0, this.telemetry.altitude - 1);
-            if (this.telemetry.altitude === 0) {
-                clearInterval(landInterval);
-                document.getElementById('flight-drone-status').textContent = 'Landed';
-                document.getElementById('land-btn').disabled = true;
-            }
-        }, 100);
+        this.inputs.throttle = -0.5;
+        this.speak("Landing sequence initiated");
     }
 
     returnToHome() {
         if (confirm('Return to home position?')) {
             document.getElementById('flight-drone-status').textContent = 'Returning to Home';
-            this.land();
+            this.speak("Return to home");
         }
     }
 
@@ -946,6 +1053,8 @@ class FlightManager {
             document.getElementById('arm-btn').disabled = false;
             document.getElementById('takeoff-btn').disabled = true;
             document.getElementById('land-btn').disabled = true;
+            
+            this.speak("Emergency Stop");
         }
     }
 
