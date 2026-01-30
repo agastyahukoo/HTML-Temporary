@@ -1,6 +1,3 @@
-// Flight View - Live Drone Feed and Telemetry System
-// search_query: flight_js_airbus_horizon_fix
-
 class FlightManager {
     constructor(droneManager, missionPlanner) {
         this.droneManager = droneManager;
@@ -10,8 +7,8 @@ class FlightManager {
         this.isConnected = false;
         this.telemetryInterval = null;
         this.flightStartTime = null;
+        this.activeCameraStream = null;
         
-        // Telemetry data
         this.telemetry = {
             lat: 0,
             lng: 0,
@@ -30,7 +27,6 @@ class FlightManager {
             rcSignal: 0
         };
         
-        // Mini map
         this.miniMap = null;
         this.droneMarker = null;
         this.arcMode = false;
@@ -56,10 +52,11 @@ class FlightManager {
         this.setupDraggableMap();
         this.startTelemetrySimulation();
         this.setupViewObserver();
+        this.initCameraSystem();
+        this.setupResizablePanels();
     }
     
     setupViewObserver() {
-        // Listen for view changes to resize mini map
         const flightView = document.getElementById('flight-view');
         if (!flightView) return;
         
@@ -70,7 +67,10 @@ class FlightManager {
                     if (isActive && this.miniMap) {
                         setTimeout(() => {
                             this.miniMap.invalidateSize();
-                        }, 100);
+                            if (this.selectedMission) {
+                                this.loadMissionOnMiniMap();
+                            }
+                        }, 200);
                     }
                 }
             });
@@ -79,30 +79,151 @@ class FlightManager {
         observer.observe(flightView, { attributes: true });
     }
 
-    // Event Listeners
+    setupResizablePanels() {
+        const container = document.querySelector('.flight-main-area');
+        const leftPanel = document.querySelector('.camera-feed-panel');
+        const rightPanel = document.querySelector('.instruments-panel');
+        
+        if (!container || !leftPanel || !rightPanel) return;
+
+        const resizer = document.createElement('div');
+        resizer.style.width = '6px';
+        resizer.style.background = '#2a2a2a';
+        resizer.style.cursor = 'col-resize';
+        resizer.style.flexShrink = '0';
+        resizer.style.zIndex = '100';
+        
+        container.insertBefore(resizer, rightPanel);
+
+        container.style.display = 'flex';
+        leftPanel.style.flex = '1';
+        rightPanel.style.flex = '1';
+        
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            
+            const containerRect = container.getBoundingClientRect();
+            const pointerRelativeX = e.clientX - containerRect.left;
+            
+            const newLeftWidth = (pointerRelativeX / containerRect.width) * 100;
+            
+            if (newLeftWidth > 10 && newLeftWidth < 90) {
+                leftPanel.style.flex = `0 0 ${newLeftWidth}%`;
+                rightPanel.style.flex = `0 0 ${100 - newLeftWidth}%`;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+                if (this.miniMap) this.miniMap.invalidateSize();
+            }
+        });
+    }
+
+    async initCameraSystem() {
+        const controls = document.querySelector('.camera-controls');
+        const feedContainer = document.getElementById('camera-feed');
+        
+        if (!controls || !feedContainer) return;
+
+        const switchBtn = document.getElementById('camera-switch-btn');
+        if (switchBtn) switchBtn.remove();
+
+        const select = document.createElement('select');
+        select.style.background = '#252525';
+        select.style.color = '#e8e8e8';
+        select.style.border = '1px solid #3a3a3a';
+        select.style.padding = '4px 8px';
+        select.style.borderRadius = '4px';
+        select.style.fontSize = '12px';
+        select.style.marginRight = '8px';
+        select.style.maxWidth = '150px';
+
+        const defaultOption = document.createElement('option');
+        defaultOption.text = 'Select Camera Source';
+        defaultOption.value = '';
+        select.appendChild(defaultOption);
+
+        try {
+            await navigator.mediaDevices.getUserMedia({ video: true });
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+            videoDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${select.length}`;
+                select.appendChild(option);
+            });
+        } catch (err) {
+            console.error('Error accessing media devices:', err);
+            defaultOption.text = 'Camera Access Denied';
+        }
+
+        controls.prepend(select);
+
+        select.addEventListener('change', async (e) => {
+            const deviceId = e.target.value;
+            if (!deviceId) return;
+
+            if (this.activeCameraStream) {
+                this.activeCameraStream.getTracks().forEach(track => track.stop());
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { deviceId: { exact: deviceId } }
+                });
+                
+                this.activeCameraStream = stream;
+                
+                feedContainer.innerHTML = '';
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'contain';
+                video.style.backgroundColor = '#000';
+                
+                feedContainer.appendChild(video);
+                
+                const status = document.querySelector('.camera-status');
+                if (status) status.textContent = 'Camera: Live';
+                
+            } catch (err) {
+                console.error('Error starting video stream:', err);
+                alert('Could not start camera feed');
+            }
+        });
+    }
+
     setupEventListeners() {
-        // Drone selection
         document.getElementById('flight-drone-select')?.addEventListener('change', (e) => {
             this.selectDrone(e.target.value);
         });
 
-        // Mission selection
         document.getElementById('flight-mission-select')?.addEventListener('change', (e) => {
             this.selectMission(e.target.value);
         });
 
-        // Flight controls
         document.getElementById('arm-btn')?.addEventListener('click', () => this.armDrone());
         document.getElementById('takeoff-btn')?.addEventListener('click', () => this.takeoff());
         document.getElementById('land-btn')?.addEventListener('click', () => this.land());
         document.getElementById('return-btn')?.addEventListener('click', () => this.returnToHome());
         document.getElementById('abort-btn')?.addEventListener('click', () => this.emergencyAbort());
-
-        // Camera controls
-        document.getElementById('camera-switch-btn')?.addEventListener('click', () => this.switchCamera());
         document.getElementById('camera-record-btn')?.addEventListener('click', () => this.toggleRecording());
-
-        // Mini map controls
         document.getElementById('toggle-arc-mode')?.addEventListener('click', () => this.toggleArcMode());
         document.getElementById('expand-mini-map')?.addEventListener('click', () => this.expandMiniMap());
         document.getElementById('minimize-mini-map')?.addEventListener('click', () => this.minimizeMiniMap());
@@ -165,7 +286,6 @@ class FlightManager {
         }
     }
 
-    // Mini Map
     initMiniMap() {
         const mapElement = document.getElementById('mini-map');
         if (!mapElement) return;
@@ -182,7 +302,6 @@ class FlightManager {
             maxZoom: 19
         }).addTo(this.miniMap);
 
-        // Add drone marker
         const droneIcon = L.divIcon({
             className: 'drone-marker',
             html: '<div style="width: 16px; height: 16px; background-color: #3b82f6; border-radius: 50%; border: 2px solid white;"></div>',
@@ -200,14 +319,12 @@ class FlightManager {
     loadMissionOnMiniMap() {
         if (!this.miniMap || !this.selectedMission) return;
 
-        // Clear existing paths
         this.miniMap.eachLayer((layer) => {
             if (layer instanceof L.Polyline || (layer instanceof L.Marker && layer !== this.droneMarker)) {
                 this.miniMap.removeLayer(layer);
             }
         });
 
-        // Draw mission path
         const waypoints = this.selectedMission.waypoints;
         if (waypoints && waypoints.length > 0) {
             const pathCoords = waypoints.map(wp => [wp.latitude, wp.longitude]);
@@ -217,8 +334,7 @@ class FlightManager {
                 opacity: 0.8
             }).addTo(this.miniMap);
 
-            // Fit bounds
-            this.miniMap.fitBounds(pathCoords);
+            this.miniMap.fitBounds(pathCoords, { padding: [30, 30] });
         }
     }
 
@@ -248,10 +364,8 @@ class FlightManager {
         const centerX = canvas.width / 2;
         const centerY = canvas.height;
         
-        // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw arc rings
         ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)';
         ctx.lineWidth = 1;
         
@@ -265,7 +379,6 @@ class FlightManager {
             ctx.stroke();
         }
 
-        // Draw radial lines
         for (let angle = 180; angle <= 360; angle += 30) {
             const rad = (angle * Math.PI) / 180;
             ctx.beginPath();
@@ -277,7 +390,6 @@ class FlightManager {
             ctx.stroke();
         }
 
-        // Draw heading indicator
         ctx.strokeStyle = '#3b82f6';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -285,7 +397,6 @@ class FlightManager {
         ctx.lineTo(centerX, centerY - maxRadius * 0.8);
         ctx.stroke();
 
-        // Draw range circles labels
         ctx.fillStyle = 'rgba(59, 130, 246, 0.6)';
         ctx.font = '10px monospace';
         for (let i = 1; i <= rings; i++) {
@@ -314,7 +425,6 @@ class FlightManager {
         window.classList.toggle('minimized');
     }
 
-    // Draggable Mini Map
     setupDraggableMap() {
         const mapWindow = document.getElementById('mini-map-window');
         const header = document.getElementById('mini-map-header');
@@ -345,13 +455,10 @@ class FlightManager {
         function drag(e) {
             if (isDragging) {
                 e.preventDefault();
-                
                 currentX = e.clientX - initialX;
                 currentY = e.clientY - initialY;
-
                 xOffset = currentX;
                 yOffset = currentY;
-
                 setTranslate(currentX, currentY, mapWindow);
             }
         }
@@ -367,15 +474,12 @@ class FlightManager {
         }
     }
 
-    // Artificial Horizon - Airbus A320 Style (Fixed & Robust)
     initArtificialHorizon() {
         const canvas = document.getElementById('artificial-horizon');
         if (!canvas) return;
 
         this.horizonCanvas = canvas;
         this.horizonCtx = canvas.getContext('2d');
-        
-        // Start the animation loop
         this.updateArtificialHorizon();
     }
 
@@ -385,14 +489,11 @@ class FlightManager {
         const canvas = this.horizonCanvas;
         const ctx = this.horizonCtx;
         
-        // Ensure canvas size matches display size every frame
-        // This fixes the "grey screen" issue when switching tabs
         if (canvas.offsetWidth > 0 && canvas.offsetHeight > 0) {
             canvas.width = canvas.offsetWidth;
             canvas.height = canvas.offsetHeight;
         }
 
-        // If canvas is still 0 (hidden), just request next frame and return
         if (canvas.width === 0 || canvas.height === 0) {
             requestAnimationFrame(() => this.updateArtificialHorizon());
             return;
@@ -402,51 +503,33 @@ class FlightManager {
         const height = canvas.height;
         const centerX = width / 2;
         const centerY = height / 2;
-        
-        // Define viewport radius (minus padding)
         const radius = Math.min(width, height) / 2 - 20;
 
         const pitch = this.telemetry.pitch || 0;
         const roll = this.telemetry.roll || 0;
 
-        // --- Render Cycle ---
-
-        // 1. Clear with black (for outside the circular mask)
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, width, height);
 
-        // 2. Set Circular Clipping Region
         ctx.save();
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.clip();
 
-        // 3. Sky and Ground (Using Transform Method for Robustness)
-        // This ensures colors are visible regardless of pitch magnitude
         ctx.save();
-        
-        // Translate to Center
         ctx.translate(centerX, centerY);
-        
-        // Rotate for Bank (Roll) - Negative roll to rotate horizon opposite to bank
         ctx.rotate((-roll * Math.PI) / 180);
         
-        // Translate for Pitch (Scale: 1 degree = ~4-5 pixels)
-        const pitchScale = radius / 30; // 30 degrees from center to edge
+        const pitchScale = radius / 30; 
         const pitchPixelOffset = pitch * pitchScale;
         ctx.translate(0, pitchPixelOffset);
 
-        // Draw Sky (Massive Rectangle above 0) - Airbus Blue
         ctx.fillStyle = '#3FB0F0'; 
-        // Draw from -5000 up to 0 (horizon line)
         ctx.fillRect(-2000, -5000, 4000, 5000);
 
-        // Draw Ground (Massive Rectangle below 0) - Airbus/Boeing Brown
         ctx.fillStyle = '#8B5A2B';
-        // Draw from 0 down to 5000
         ctx.fillRect(-2000, 0, 4000, 5000);
 
-        // Draw Horizon Line
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -454,7 +537,6 @@ class FlightManager {
         ctx.lineTo(2000, 0);
         ctx.stroke();
 
-        // Draw Pitch Ladder (Fixed to the horizon world)
         ctx.strokeStyle = '#FFFFFF';
         ctx.fillStyle = '#FFFFFF';
         ctx.lineWidth = 2;
@@ -462,16 +544,14 @@ class FlightManager {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        // Draw lines every 2.5 degrees, from -90 to +90
-        // Optimization: Only draw what's roughly visible (-40 to +40 relative to pitch)
         const startPitch = Math.floor((pitch - 40) / 2.5) * 2.5;
         const endPitch = Math.ceil((pitch + 40) / 2.5) * 2.5;
 
         for (let p = -90; p <= 90; p += 2.5) {
-            if (p === 0) continue; // Horizon line already drawn
-            if (Math.abs(p - pitch) > 40) continue; // Skip if out of view
+            if (p === 0) continue; 
+            if (Math.abs(p - pitch) > 40) continue; 
 
-            const y = -p * pitchScale; // Negative because up is negative Y in canvas
+            const y = -p * pitchScale; 
             const isMajor = p % 10 === 0;
             const lineHalfWidth = isMajor ? 30 : 15;
 
@@ -486,18 +566,14 @@ class FlightManager {
             }
         }
 
-        // Restore coordinate system (Back to screen coordinates, but still clipped)
         ctx.restore(); 
 
-        // 4. Draw Bank Scale (Fixed to Screen)
-        // Top Arc
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, -Math.PI * 0.8, -Math.PI * 0.2);
         ctx.stroke();
 
-        // Bank Markers
         const bankAngles = [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60];
         bankAngles.forEach(angle => {
             ctx.save();
@@ -511,7 +587,6 @@ class FlightManager {
             ctx.lineTo(0, -radius + (angle % 30 === 0 ? 15 : 8));
             ctx.stroke();
             
-            // Yellow Triangle at 0 (Sky Pointer)
             if (angle === 0) {
                 ctx.fillStyle = '#FFFF00';
                 ctx.beginPath();
@@ -523,72 +598,57 @@ class FlightManager {
             ctx.restore();
         });
 
-        // 5. Draw Roll Pointer (Moving Triangle)
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate((roll * Math.PI) / 180);
         
-        ctx.fillStyle = '#FFFF00'; // Yellow
+        ctx.fillStyle = '#FFFF00'; 
         ctx.beginPath();
-        // Points UP towards the Sky Pointer
         ctx.moveTo(0, -radius + 5); 
         ctx.lineTo(-8, -radius + 18);
         ctx.lineTo(8, -radius + 18);
         ctx.fill();
         ctx.restore();
 
-        // End Clipping
         ctx.restore(); 
 
-        // 6. Draw Fixed Aircraft Symbol (Black with Yellow Outline)
         ctx.lineWidth = 4;
-        ctx.strokeStyle = '#FFFF00'; // Yellow outline
-        ctx.fillStyle = '#000000'; // Black fill
+        ctx.strokeStyle = '#FFFF00';
+        ctx.fillStyle = '#000000';
         
-        // Center Dot
         ctx.beginPath();
         ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
 
-        // Wings (Airbus Style - stylized)
-        // Left Wing
         ctx.beginPath();
         ctx.moveTo(centerX - 80, centerY); 
         ctx.lineTo(centerX - 20, centerY);
         ctx.lineTo(centerX - 20, centerY + 10);
         ctx.stroke();
 
-        // Right Wing
         ctx.beginPath();
         ctx.moveTo(centerX + 80, centerY);
         ctx.lineTo(centerX + 20, centerY);
         ctx.lineTo(centerX + 20, centerY + 10);
         ctx.stroke();
 
-        // 7. Digital Readouts (HUD)
         ctx.font = 'bold 16px monospace';
-        ctx.fillStyle = '#00FF00'; // Green text
+        ctx.fillStyle = '#00FF00'; 
         
-        // Pitch
         ctx.fillText(`PIT: ${pitch.toFixed(1)}°`, centerX - 120, centerY + 150);
-        // Roll
         ctx.fillText(`ROL: ${roll.toFixed(1)}°`, centerX + 120, centerY + 150);
 
         requestAnimationFrame(() => this.updateArtificialHorizon());
     }
 
-    // Telemetry Simulation
     startTelemetrySimulation() {
-        // Simulate telemetry data for demo purposes
         this.telemetryInterval = setInterval(() => {
-            // Only jitter if connected, or simulate basic movement
             if (this.isConnected) {
                 this.telemetry.pitch += (Math.random() - 0.5) * 0.5;
                 this.telemetry.roll += (Math.random() - 0.5) * 0.5;
                 this.telemetry.heading += (Math.random() - 0.5) * 0.2;
                 
-                // Clamp values
                 this.telemetry.pitch = Math.max(-30, Math.min(30, this.telemetry.pitch));
                 this.telemetry.roll = Math.max(-45, Math.min(45, this.telemetry.roll));
                 this.telemetry.heading = (this.telemetry.heading + 360) % 360;
@@ -620,7 +680,6 @@ class FlightManager {
                 `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         }
 
-        // Update mini map heading
         document.getElementById('mini-map-heading').textContent = `${this.telemetry.heading.toFixed(0)}°`;
     }
 
@@ -631,7 +690,6 @@ class FlightManager {
         document.getElementById('flight-vspeed').textContent = `${this.telemetry.vspeed.toFixed(1)} m/s`;
     }
 
-    // Flight Controls
     armDrone() {
         if (!this.selectedDrone) {
             alert('Please select a drone first');
@@ -658,7 +716,6 @@ class FlightManager {
         document.getElementById('takeoff-btn').disabled = true;
         document.getElementById('land-btn').disabled = false;
         
-        // Simulate takeoff
         const takeoffInterval = setInterval(() => {
             this.telemetry.altitude += 1;
             if (this.telemetry.altitude >= 50) {
@@ -670,7 +727,6 @@ class FlightManager {
     land() {
         document.getElementById('flight-drone-status').textContent = 'Landing';
         
-        // Simulate landing
         const landInterval = setInterval(() => {
             this.telemetry.altitude = Math.max(0, this.telemetry.altitude - 1);
             if (this.telemetry.altitude === 0) {
@@ -702,10 +758,6 @@ class FlightManager {
         }
     }
 
-    switchCamera() {
-        alert('Camera switching not implemented - connect to actual drone');
-    }
-
     toggleRecording() {
         const btn = document.getElementById('camera-record-btn');
         if (btn.textContent === 'Record') {
@@ -718,7 +770,6 @@ class FlightManager {
     }
 }
 
-// Initialize when page loads
 let flightManager;
 
 if (document.readyState === 'loading') {
