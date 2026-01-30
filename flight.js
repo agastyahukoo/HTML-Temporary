@@ -166,7 +166,7 @@ class FlightManager {
                 select.appendChild(option);
             });
         } catch (err) {
-            console.error('Error accessing media devices:', err);
+            console.error(err);
             defaultOption.text = 'Camera Access Denied';
         }
 
@@ -199,12 +199,8 @@ class FlightManager {
                 
                 feedContainer.appendChild(video);
                 
-                const status = document.querySelector('.camera-status');
-                if (status) status.textContent = 'Camera: Live';
-                
             } catch (err) {
-                console.error('Error starting video stream:', err);
-                alert('Could not start camera feed');
+                console.error(err);
             }
         });
     }
@@ -503,35 +499,37 @@ class FlightManager {
         const height = canvas.height;
         const centerX = width / 2;
         const centerY = height / 2;
-        const radius = Math.min(width, height) / 2 - 20;
-
+        
         const pitch = this.telemetry.pitch || 0;
         const roll = this.telemetry.roll || 0;
+        const speed = this.telemetry.speed || 0;
+        const altitude = this.telemetry.altitude || 0;
+        const heading = this.telemetry.heading || 0;
 
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, width, height);
 
         ctx.save();
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.rect(0, 0, width, height);
         ctx.clip();
 
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate((-roll * Math.PI) / 180);
         
-        const pitchScale = radius / 30; 
+        const pitchScale = height / 60; 
         const pitchPixelOffset = pitch * pitchScale;
         ctx.translate(0, pitchPixelOffset);
 
-        ctx.fillStyle = '#3FB0F0'; 
+        ctx.fillStyle = '#0095D9'; 
         ctx.fillRect(-2000, -5000, 4000, 5000);
 
-        ctx.fillStyle = '#8B5A2B';
+        ctx.fillStyle = '#8B5A2B'; 
         ctx.fillRect(-2000, 0, 4000, 5000);
 
         ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(-2000, 0);
         ctx.lineTo(2000, 0);
@@ -540,20 +538,17 @@ class FlightManager {
         ctx.strokeStyle = '#FFFFFF';
         ctx.fillStyle = '#FFFFFF';
         ctx.lineWidth = 2;
-        ctx.font = 'bold 12px Arial';
+        ctx.font = 'bold 14px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const startPitch = Math.floor((pitch - 40) / 2.5) * 2.5;
-        const endPitch = Math.ceil((pitch + 40) / 2.5) * 2.5;
-
         for (let p = -90; p <= 90; p += 2.5) {
-            if (p === 0) continue; 
-            if (Math.abs(p - pitch) > 40) continue; 
+            if (p === 0) continue;
+            if (Math.abs(p - pitch) > 40) continue;
 
-            const y = -p * pitchScale; 
+            const y = -p * pitchScale;
             const isMajor = p % 10 === 0;
-            const lineHalfWidth = isMajor ? 30 : 15;
+            const lineHalfWidth = isMajor ? 35 : 15;
 
             ctx.beginPath();
             ctx.moveTo(-lineHalfWidth, y);
@@ -561,20 +556,201 @@ class FlightManager {
             ctx.stroke();
 
             if (isMajor) {
-                ctx.fillText(Math.abs(p).toString(), -lineHalfWidth - 15, y);
-                ctx.fillText(Math.abs(p).toString(), lineHalfWidth + 15, y);
+                ctx.fillText(Math.abs(p).toString(), -lineHalfWidth - 20, y);
+                ctx.fillText(Math.abs(p).toString(), lineHalfWidth + 20, y);
             }
         }
-
         ctx.restore(); 
+
+        const tapeWidth = 70;
+        const tapeHeight = height * 0.8;
+        const tapeY = (height - tapeHeight) / 2;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, tapeWidth, height);
+        ctx.clip();
+
+        ctx.fillStyle = 'rgba(40, 40, 40, 0.6)';
+        ctx.fillRect(0, 0, tapeWidth, height);
+        
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(tapeWidth, 0);
+        ctx.lineTo(tapeWidth, height);
+        ctx.stroke();
+
+        const speedScale = 8; 
+        const speedPixelOffset = speed * speedScale;
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+
+        const minSpeed = Math.max(0, Math.floor((speed - 40) / 10) * 10);
+        const maxSpeed = Math.floor((speed + 40) / 10) * 10;
+
+        for (let s = minSpeed; s <= maxSpeed; s += 10) {
+            const y = centerY - (s - speed) * speedScale;
+            
+            ctx.beginPath();
+            ctx.moveTo(tapeWidth, y);
+            ctx.lineTo(tapeWidth - 10, y);
+            ctx.stroke();
+
+            ctx.fillText(s.toString(), tapeWidth - 15, y);
+            
+            for(let sub = 1; sub < 5; sub++) {
+                const subY = y - (sub * 2 * speedScale);
+                ctx.beginPath();
+                ctx.moveTo(tapeWidth, subY);
+                ctx.lineTo(tapeWidth - 5, subY);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(width - tapeWidth, 0, tapeWidth, height);
+        ctx.clip();
+
+        ctx.fillStyle = 'rgba(40, 40, 40, 0.6)';
+        ctx.fillRect(width - tapeWidth, 0, tapeWidth, height);
+
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(width - tapeWidth, 0);
+        ctx.lineTo(width - tapeWidth, height);
+        ctx.stroke();
+
+        const altScale = 1.5; 
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'left';
+
+        const minAlt = Math.floor((altitude - 200) / 100) * 100;
+        const maxAlt = Math.floor((altitude + 200) / 100) * 100;
+
+        for (let a = minAlt; a <= maxAlt; a += 100) {
+            const y = centerY - (a - altitude) * altScale;
+            
+            ctx.beginPath();
+            ctx.moveTo(width - tapeWidth, y);
+            ctx.lineTo(width - tapeWidth + 10, y);
+            ctx.stroke();
+
+            ctx.fillText(a.toString(), width - tapeWidth + 15, y);
+            
+             for(let sub = 1; sub < 5; sub++) {
+                const subY = y - (sub * 20 * altScale);
+                ctx.beginPath();
+                ctx.moveTo(width - tapeWidth, subY);
+                ctx.lineTo(width - tapeWidth + 5, subY);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+
+        const compassHeight = 40;
+        const compassY = height - compassHeight - 10;
+        const compassWidth = width * 0.6;
+        const compassX = (width - compassWidth) / 2;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(compassX, compassY, compassWidth, compassHeight + 20);
+        ctx.clip();
+
+        ctx.fillStyle = 'rgba(40, 40, 40, 0.6)';
+        ctx.fillRect(compassX, compassY, compassWidth, compassHeight);
+        
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(compassX, compassY);
+        ctx.lineTo(compassX + compassWidth, compassY);
+        ctx.stroke();
+
+        const hdgScale = compassWidth / 60; 
+        
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#FFFFFF';
+
+        for (let h = Math.floor(heading - 40); h <= Math.ceil(heading + 40); h++) {
+            if (h % 5 !== 0) continue;
+            
+            let displayH = h;
+            while (displayH < 0) displayH += 360;
+            while (displayH >= 360) displayH -= 360;
+
+            const x = centerX + (h - heading) * hdgScale;
+            
+            if (x < compassX || x > compassX + compassWidth) continue;
+
+            const isMajor = h % 10 === 0;
+            const tickHeight = isMajor ? 10 : 5;
+
+            ctx.beginPath();
+            ctx.moveTo(x, compassY);
+            ctx.lineTo(x, compassY + tickHeight);
+            ctx.stroke();
+
+            if (isMajor) {
+                let text = (displayH / 10).toString().padStart(2, '0');
+                if (displayH === 0) text = 'N';
+                if (displayH === 90) text = 'E';
+                if (displayH === 180) text = 'S';
+                if (displayH === 270) text = 'W';
+                ctx.fillText(text, x, compassY + 25);
+            }
+        }
+        
+        ctx.strokeStyle = '#FF0000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX, compassY - 5);
+        ctx.lineTo(centerX, compassY + 15);
+        ctx.stroke();
+
+        ctx.restore();
+
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#000000';
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, centerY - 22, tapeWidth + 5, 44); 
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, centerY - 22, tapeWidth + 5, 44);
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 18px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(speed).toString(), tapeWidth - 5, centerY + 5);
+
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(width - tapeWidth - 5, centerY - 22, tapeWidth + 5, 44);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(width - tapeWidth - 5, centerY - 22, tapeWidth + 5, 44);
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'left';
+        ctx.fillText(Math.round(altitude).toString(), width - tapeWidth + 10, centerY + 5);
 
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, -Math.PI * 0.8, -Math.PI * 0.2);
+        ctx.arc(centerX, centerY, height * 0.35, -Math.PI * 0.8, -Math.PI * 0.2);
         ctx.stroke();
 
         const bankAngles = [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60];
+        const bankRadius = height * 0.35;
+        
         bankAngles.forEach(angle => {
             ctx.save();
             ctx.translate(centerX, centerY);
@@ -583,16 +759,16 @@ class FlightManager {
             ctx.strokeStyle = '#FFFFFF';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(0, -radius);
-            ctx.lineTo(0, -radius + (angle % 30 === 0 ? 15 : 8));
+            ctx.moveTo(0, -bankRadius);
+            ctx.lineTo(0, -bankRadius - 10);
             ctx.stroke();
             
             if (angle === 0) {
-                ctx.fillStyle = '#FFFF00';
+                ctx.fillStyle = '#FFFFFF';
                 ctx.beginPath();
-                ctx.moveTo(0, -radius + 15);
-                ctx.lineTo(-6, -radius + 25);
-                ctx.lineTo(6, -radius + 25);
+                ctx.moveTo(0, -bankRadius);
+                ctx.lineTo(-6, -bankRadius + 10);
+                ctx.lineTo(6, -bankRadius + 10);
                 ctx.fill();
             }
             ctx.restore();
@@ -602,42 +778,55 @@ class FlightManager {
         ctx.translate(centerX, centerY);
         ctx.rotate((roll * Math.PI) / 180);
         
-        ctx.fillStyle = '#FFFF00'; 
+        ctx.fillStyle = '#FFFFFF'; 
         ctx.beginPath();
-        ctx.moveTo(0, -radius + 5); 
-        ctx.lineTo(-8, -radius + 18);
-        ctx.lineTo(8, -radius + 18);
+        ctx.moveTo(0, -bankRadius); 
+        ctx.lineTo(-8, -bankRadius + 15);
+        ctx.lineTo(8, -bankRadius + 15);
         ctx.fill();
         ctx.restore();
 
-        ctx.restore(); 
-
         ctx.lineWidth = 4;
-        ctx.strokeStyle = '#FFFF00';
+        ctx.strokeStyle = '#000000';
         ctx.fillStyle = '#000000';
         
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+        ctx.moveTo(centerX - 90, centerY); 
+        ctx.lineTo(centerX - 30, centerY);
+        ctx.lineTo(centerX - 30, centerY + 10);
+        ctx.lineTo(centerX - 90, centerY + 10);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(centerX + 90, centerY);
+        ctx.lineTo(centerX + 30, centerY);
+        ctx.lineTo(centerX + 30, centerY + 10);
+        ctx.lineTo(centerX + 90, centerY + 10);
         ctx.fill();
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.moveTo(centerX - 80, centerY); 
-        ctx.lineTo(centerX - 20, centerY);
-        ctx.lineTo(centerX - 20, centerY + 10);
+        ctx.rect(centerX - 5, centerY - 5, 10, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = '#FFFFFF'; 
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.moveTo(centerX - 90, centerY); 
+        ctx.lineTo(centerX - 30, centerY);
+        ctx.lineTo(centerX - 30, centerY + 10);
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.moveTo(centerX + 80, centerY);
-        ctx.lineTo(centerX + 20, centerY);
-        ctx.lineTo(centerX + 20, centerY + 10);
+        ctx.moveTo(centerX + 90, centerY);
+        ctx.lineTo(centerX + 30, centerY);
+        ctx.lineTo(centerX + 30, centerY + 10);
         ctx.stroke();
 
-        ctx.font = 'bold 16px monospace';
-        ctx.fillStyle = '#00FF00'; 
-        
-        ctx.fillText(`PIT: ${pitch.toFixed(1)}°`, centerX - 120, centerY + 150);
-        ctx.fillText(`ROL: ${roll.toFixed(1)}°`, centerX + 120, centerY + 150);
+        ctx.restore(); 
 
         requestAnimationFrame(() => this.updateArtificialHorizon());
     }
@@ -648,6 +837,8 @@ class FlightManager {
                 this.telemetry.pitch += (Math.random() - 0.5) * 0.5;
                 this.telemetry.roll += (Math.random() - 0.5) * 0.5;
                 this.telemetry.heading += (Math.random() - 0.5) * 0.2;
+                this.telemetry.speed = Math.max(0, this.telemetry.speed + (Math.random() - 0.4));
+                this.telemetry.altitude = Math.max(0, this.telemetry.altitude + (Math.random() - 0.4));
                 
                 this.telemetry.pitch = Math.max(-30, Math.min(30, this.telemetry.pitch));
                 this.telemetry.roll = Math.max(-45, Math.min(45, this.telemetry.roll));
