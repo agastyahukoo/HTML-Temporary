@@ -8,6 +8,7 @@ class FlightManager {
         this.flightLoop = null;
         this.flightStartTime = null;
         this.activeCameraStream = null;
+        this.manualControlActive = false;
         
         this.telemetry = {
             lat: 37.7749,
@@ -58,6 +59,7 @@ class FlightManager {
 
     setup() {
         this.setupEventListeners();
+        this.setupManualControlUI();
         this.setupInputListeners();
         this.loadDroneList();
         this.loadMissionList();
@@ -239,30 +241,94 @@ class FlightManager {
         document.getElementById('minimize-mini-map')?.addEventListener('click', () => this.minimizeMiniMap());
     }
 
+    setupManualControlUI() {
+        const controlsContainer = document.querySelector('.flight-control-buttons');
+        if (!controlsContainer) return;
+
+        const btn = document.createElement('button');
+        btn.id = 'manual-control-btn';
+        btn.textContent = 'MANUAL CONTROL: OFF';
+        btn.className = 'btn-flight';
+        btn.style.marginTop = '10px';
+        btn.style.border = '1px solid #3b82f6';
+        
+        btn.addEventListener('click', () => {
+            this.manualControlActive = !this.manualControlActive;
+            if (this.manualControlActive) {
+                btn.textContent = 'MANUAL CONTROL: ON';
+                btn.style.backgroundColor = '#10b981';
+                btn.style.color = '#fff';
+            } else {
+                btn.textContent = 'MANUAL CONTROL: OFF';
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+                
+                this.inputs.pitch = 0;
+                this.inputs.roll = 0;
+                this.inputs.yaw = 0;
+                this.inputs.throttle = 0;
+            }
+        });
+
+        controlsContainer.appendChild(btn);
+    }
+
     setupInputListeners() {
         window.addEventListener('keydown', (e) => {
+            if (!this.manualControlActive) return;
+
             switch(e.key) {
-                case 'ArrowUp': this.inputs.pitch = -1; break;
-                case 'ArrowDown': this.inputs.pitch = 1; break;
-                case 'ArrowLeft': this.inputs.roll = -1; break;
-                case 'ArrowRight': this.inputs.roll = 1; break;
-                case 'w': case 'W': this.inputs.throttle = 1; break;
-                case 's': case 'S': this.inputs.throttle = -1; break;
-                case 'a': case 'A': this.inputs.yaw = -1; break;
-                case 'd': case 'D': this.inputs.yaw = 1; break;
+                case 'ArrowUp': 
+                    this.inputs.pitch = -1; 
+                    e.preventDefault();
+                    break;
+                case 'ArrowDown': 
+                    this.inputs.pitch = 1; 
+                    e.preventDefault();
+                    break;
+                case 'ArrowLeft': 
+                    this.inputs.roll = -1; 
+                    e.preventDefault();
+                    break;
+                case 'ArrowRight': 
+                    this.inputs.roll = 1; 
+                    e.preventDefault();
+                    break;
+                case 'w': case 'W': 
+                    this.inputs.throttle = 1; 
+                    break;
+                case 's': case 'S': 
+                    this.inputs.throttle = -1; 
+                    break;
+                case 'a': case 'A': 
+                    this.inputs.yaw = -1; 
+                    break;
+                case 'd': case 'D': 
+                    this.inputs.yaw = 1; 
+                    break;
             }
         });
 
         window.addEventListener('keyup', (e) => {
+            if (!this.manualControlActive) return;
+
             switch(e.key) {
                 case 'ArrowUp': 
-                case 'ArrowDown': this.inputs.pitch = 0; break;
+                case 'ArrowDown': 
+                    this.inputs.pitch = 0; 
+                    break;
                 case 'ArrowLeft': 
-                case 'ArrowRight': this.inputs.roll = 0; break;
+                case 'ArrowRight': 
+                    this.inputs.roll = 0; 
+                    break;
                 case 'w': case 'W': 
-                case 's': case 'S': this.inputs.throttle = 0; break;
+                case 's': case 'S': 
+                    this.inputs.throttle = 0; 
+                    break;
                 case 'a': case 'A': 
-                case 'd': case 'D': this.inputs.yaw = 0; break;
+                case 'd': case 'D': 
+                    this.inputs.yaw = 0; 
+                    break;
             }
         });
     }
@@ -272,10 +338,21 @@ class FlightManager {
         const gp = gamepads[0]; 
 
         if (gp) {
-            this.inputs.yaw = Math.abs(gp.axes[0]) > 0.1 ? gp.axes[0] : 0;
-            this.inputs.throttle = Math.abs(gp.axes[1]) > 0.1 ? -gp.axes[1] : 0;
-            this.inputs.roll = Math.abs(gp.axes[2]) > 0.1 ? gp.axes[2] : 0;
-            this.inputs.pitch = Math.abs(gp.axes[3]) > 0.1 ? gp.axes[3] : 0;
+            if (!this.manualControlActive) {
+                const btn = document.getElementById('manual-control-btn');
+                if (btn && (Math.abs(gp.axes[0]) > 0.1 || Math.abs(gp.axes[1]) > 0.1)) {
+                    this.manualControlActive = true;
+                    btn.textContent = 'MANUAL CONTROL: ON (GAMEPAD)';
+                    btn.style.backgroundColor = '#10b981';
+                }
+            }
+            
+            if (this.manualControlActive) {
+                this.inputs.yaw = Math.abs(gp.axes[0]) > 0.1 ? gp.axes[0] : 0;
+                this.inputs.throttle = Math.abs(gp.axes[1]) > 0.1 ? -gp.axes[1] : 0;
+                this.inputs.roll = Math.abs(gp.axes[2]) > 0.1 ? gp.axes[2] : 0;
+                this.inputs.pitch = Math.abs(gp.axes[3]) > 0.1 ? gp.axes[3] : 0;
+            }
         }
     }
 
@@ -949,7 +1026,6 @@ class FlightManager {
                 this.updateTelemetryDisplay();
                 this.updateInstruments();
                 
-                // Update position based on heading/speed
                 if (this.telemetry.speed > 0) {
                     const rad = (90 - this.telemetry.heading) * Math.PI / 180;
                     this.telemetry.lat += Math.sin(rad) * 0.00001;
