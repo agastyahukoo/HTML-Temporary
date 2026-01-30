@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Darkstar</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar -->
+        <nav class="top-nav">
+            <div class="nav-brand">
+                <h1>Darkstar</h1>
+            </div>
+            <div class="nav-menu">
+                <button class="nav-btn active" data-view="home">
+                    Home
+                </button>
+                <button class="nav-btn" data-view="mission">
+                    Mission Planner
+                </button>
+                <button class="nav-btn" data-view="flight">
+                    Flight
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Home View -->
+            <div id="home-view" class="view active">
+                <div class="content-wrapper">
+                    <!-- Left Panel - Drone List -->
+                    <aside class="drone-list-panel">
+                        <div class="panel-header">
+                            <div class="header-content">
+                                <h2>Drone Fleet</h2>
+                                <span class="drone-count" id="drone-count">0 Profiles</span>
+                            </div>
+                            <button class="btn-primary btn-create" id="create-drone-btn">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="8" y1="3" x2="8" y2="13"></line>
+                                    <line x1="3" y1="8" x2="13" y2="8"></line>
+                                </svg>
+                                New Profile
+                            </button>
+                        </div>
+                        <div class="drone-list" id="drone-list">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">
+                                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                                        <path d="M2 17l10 5 10-5"></path>
+                                        <path d="M2 12l10 5 10-5"></path>
+                                    </svg>
+                                </div>
+                                <p class="empty-state-title">No drone profiles yet</p>
+                                <p class="empty-state-hint">Create your first drone profile to get started</p>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- Right Panel - Drone Editor -->
+                    <section class="drone-editor-panel">
+                        <div id="editor-placeholder" class="editor-placeholder">
+                            <div class="placeholder-content">
+                                <h3>Select or Create a Drone Profile</h3>
+                                <p>Configure your UAV specifications and performance parameters</p>
+                            </div>
+                        </div>
+
+                        <div id="drone-editor" class="drone-editor" style="display: none;">
+                            <div class="editor-header">
+                                <h2 id="editor-title">New Drone Profile</h2>
+                                <div class="editor-actions">
+                                    <button class="btn-secondary" id="cancel-btn">Cancel</button>
+                                    <button class="btn-primary" id="save-drone-btn">Save Profile</button>
+                                    <button class="btn-primary" id="download-spec-btn" style="display: none;">
+                                        Download Spec Sheet
+                                    </button>
+                                </div>
+                            </div>
+
+                            <form id="drone-form" class="drone-form">
+                                <!-- Basic Information -->
+                                <div class="form-section">
+                                    <h3 class="section-title">Basic Information</h3>
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label for="drone-name">Drone Name *</label>
+                                            <input type="text" id="drone-name" required placeholder="e.g., Recon Eagle X1">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="drone-type">Type *</label>
+                                            <select id="drone-type" required>
+                                                <option value="">Select Type</option>
+                                                <option value="quadcopter">Quadcopter</option>
+                                                <option value="hexacopter">Hexacopter</option>
+                                                <option value="octocopter">Octocopter</option>
+                                                <option value="fixed-wing">Fixed-Wing UAV</option>
+                                                <option value="vtol">VTOL</option>
+                                                <option value="hybrid">Hybrid</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="drone-version">Version</label>
+                                            <input type="text" id="drone-version" placeholder="e.g., v2.1">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="drone-weight">Total Weight (kg) *</label>
+                                            <input type="number" id="drone-weight" step="0.01" required placeholder="e.g., 2.5">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Airframe Specifications -->
+                                <div class="form-section" id="airframe-section">
+                                    <h3 class="section-title">Airframe Specifications</h3>
+                                    <div class="form-grid">
+                                        <div class="form-group wingspan-group">
+                                            <label for="wingspan">Wingspan (m)</label>
+                                            <input type="number" id="wingspan" step="0.01" placeholder="e.g., 1.5">
+                                        </div>
+
+                                        <div class="form-group frame-size-group">
+                                            <label for="frame-size">Frame Size (mm)</label>
+                                            <input type="number" id="frame-size" placeholder="e.g., 450">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="material">Material</label>
+                                            <select id="material">
+                                                <option value="">Select Material</option>
+                                                <option value="carbon-fiber">Carbon Fiber</option>
+                                                <option value="fiberglass">Fiberglass</option>
+                                                <option value="foam">EPO/EPP Foam</option>
+                                                <option value="plastic">Plastic</option>
+                                                <option value="aluminum">Aluminum</option>
+                                                <option value="composite">Composite</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="fuselage-length">Fuselage Length (m)</label>
+                                            <input type="number" id="fuselage-length" step="0.01" placeholder="e.g., 0.8">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Motor Configuration -->
+                                <div class="form-section">
+                                    <h3 class="section-title">Motor Configuration</h3>
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label for="motor-count">Number of Motors *</label>
+                                            <input type="number" id="motor-count" min="1" max="12" required placeholder="e.g., 4">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="motor-brand">Motor Brand</label>
+                                            <input type="text" id="motor-brand" placeholder="e.g., T-Motor">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="motor-model">Motor Model</label>
+                                            <input type="text" id="motor-model" placeholder="e.g., F60 PRO III">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="motor-kv">KV Rating *</label>
+                                            <input type="number" id="motor-kv" required placeholder="e.g., 1750">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="motor-thrust">Max Thrust per Motor (g) *</label>
+                                            <input type="number" id="motor-thrust" required placeholder="e.g., 1800">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="propeller-size">Propeller Size (inches)</label>
+                                            <input type="text" id="propeller-size" placeholder="e.g., 15x5.1">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="propeller-type">Propeller Type</label>
+                                            <select id="propeller-type">
+                                                <option value="">Select Type</option>
+                                                <option value="2-blade">2-Blade</option>
+                                                <option value="3-blade">3-Blade</option>
+                                                <option value="4-blade">4-Blade</option>
+                                                <option value="folding">Folding</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Electronic Speed Controller -->
+                                <div class="form-section">
+                                    <h3 class="section-title">ESC Configuration</h3>
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label for="esc-brand">ESC Brand</label>
+                                            <input type="text" id="esc-brand" placeholder="e.g., HobbyWing">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="esc-model">ESC Model</label>
+                                            <input type="text" id="esc-model" placeholder="e.g., XRotor 60A">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="esc-current">Current Rating (A)</label>
+                                            <input type="number" id="esc-current" placeholder="e.g., 60">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="esc-protocol">Protocol</label>
+                                            <select id="esc-protocol">
+                                                <option value="">Select Protocol</option>
+                                                <option value="pwm">PWM</option>
+                                                <option value="oneshot125">Oneshot125</option>
+                                                <option value="oneshot42">Oneshot42</option>
+                                                <option value="dshot150">DShot150</option>
+                                                <option value="dshot300">DShot300</option>
+                                                <option value="dshot600">DShot600</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Flight Controller -->
+                                <div class="form-section">
+                                    <h3 class="section-title">Flight Controller</h3>
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label for="fc-brand">FC Brand</label>
+                                            <input type="text" id="fc-brand" placeholder="e.g., Pixhawk">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="fc-model">FC Model</label>
+                                            <input type="text" id="fc-model" placeholder="e.g., Pixhawk 4">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="fc-firmware">Firmware</label>
+                                            <input type="text" id="fc-firmware" placeholder="e.g., ArduPilot 4.x">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="fc-gps">GPS Module</label>
+                                            <input type="text" id="fc-gps" placeholder="e.g., u-blox M8N">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Battery Configuration -->
+                                <div class="form-section">
+                                    <h3 class="section-title">Battery Configuration</h3>
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label for="battery-type">Battery Type *</label>
+                                            <select id="battery-type" required>
+                                                <option value="">Select Type</option>
+                                                <option value="lipo">LiPo</option>
+                                                <option value="li-ion">Li-Ion</option>
+                                                <option value="lifepo4">LiFePO4</option>
+                                                <option value="nimh">NiMH</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="battery-cells">Cell Count (S) *</label>
+                                            <input type="number" id="battery-cells" min="1" required placeholder="e.g., 6">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="battery-capacity">Capacity (mAh) *</label>
+                                            <input type="number" id="battery-capacity" required placeholder="e.g., 5200">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="battery-c-rating">C-Rating</label>
+                                            <input type="number" id="battery-c-rating" placeholder="e.g., 30">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="battery-voltage">Nominal Voltage (V)</label>
+                                            <input type="number" id="battery-voltage" step="0.1" readonly>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="battery-weight">Battery Weight (g)</label>
+                                            <input type="number" id="battery-weight" placeholder="e.g., 650">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Performance Metrics -->
+                                <div class="form-section">
+                                    <h3 class="section-title">Performance Parameters</h3>
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label for="max-speed">Max Speed (m/s)</label>
+                                            <input type="number" id="max-speed" step="0.1" placeholder="e.g., 25">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="cruise-speed">Cruise Speed (m/s) *</label>
+                                            <input type="number" id="cruise-speed" step="0.1" required placeholder="e.g., 15">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="hover-current">Hover Current (A)</label>
+                                            <input type="number" id="hover-current" step="0.1" placeholder="e.g., 18">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="max-flight-time">Max Flight Time (min)</label>
+                                            <input type="number" id="max-flight-time" step="0.1" placeholder="e.g., 25">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="wind-resistance">Wind Resistance (m/s)</label>
+                                            <input type="number" id="wind-resistance" step="0.1" placeholder="e.g., 12">
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="max-altitude">Max Operating Altitude (m)</label>
+                                            <input type="number" id="max-altitude" placeholder="e.g., 5000">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Calculated Metrics Display -->
+                                <div class="form-section calculated-metrics" style="display: none;">
+                                    <h3 class="section-title">Calculated Metrics</h3>
+                                    <div class="metrics-grid">
+                                        <div class="metric-card">
+                                            <span class="metric-label">Total Thrust</span>
+                                            <span class="metric-value" id="calc-total-thrust">-</span>
+                                        </div>
+                                        <div class="metric-card">
+                                            <span class="metric-label">Thrust-to-Weight Ratio</span>
+                                            <span class="metric-value" id="calc-twr">-</span>
+                                        </div>
+                                        <div class="metric-card">
+                                            <span class="metric-label">Estimated Flight Time</span>
+                                            <span class="metric-value" id="calc-flight-time">-</span>
+                                        </div>
+                                        <div class="metric-card">
+                                            <span class="metric-label">Max Range (est.)</span>
+                                            <span class="metric-value" id="calc-range">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Flight View -->
+            <div id="flight-view" class="view">
+                <div class="flight-container">
+                    <!-- Main Flight Display -->
+                    <div class="flight-main-area">
+                        <!-- Camera Feed -->
+                        <div class="camera-feed-panel">
+                            <div class="panel-title-bar">
+                                <h3>Camera Feed</h3>
+                                <div class="camera-controls">
+                                    <button class="control-btn-small" id="camera-switch-btn">Switch</button>
+                                    <button class="control-btn-small" id="camera-record-btn">Record</button>
+                                </div>
+                            </div>
+                            <div class="camera-feed" id="camera-feed">
+                                <div class="camera-placeholder">
+                                    <div class="camera-grid">
+                                        <div class="grid-line horizontal" style="top: 33.33%"></div>
+                                        <div class="grid-line horizontal" style="top: 66.66%"></div>
+                                        <div class="grid-line vertical" style="left: 33.33%"></div>
+                                        <div class="grid-line vertical" style="left: 66.66%"></div>
+                                    </div>
+                                    <div class="camera-crosshair">
+                                        <div class="crosshair-h"></div>
+                                        <div class="crosshair-v"></div>
+                                    </div>
+                                    <div class="camera-info">
+                                        <div class="camera-status">Camera: Ready</div>
+                                        <div class="camera-coords">Waiting for connection...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Artificial Horizon and Flight Instruments -->
+                        <div class="instruments-panel">
+                            <div class="panel-title-bar">
+                                <h3>Primary Flight Display</h3>
+                            </div>
+                            
+                            <!-- Artificial Horizon -->
+                            <div class="artificial-horizon-container">
+                                <canvas id="artificial-horizon" class="artificial-horizon"></canvas>
+                            </div>
+
+                            <!-- Flight Instruments Grid -->
+                            <div class="flight-instruments">
+                                <div class="instrument">
+                                    <div class="instrument-label">Altitude</div>
+                                    <div class="instrument-value" id="flight-altitude">0 m</div>
+                                </div>
+                                <div class="instrument">
+                                    <div class="instrument-label">Speed</div>
+                                    <div class="instrument-value" id="flight-speed">0 m/s</div>
+                                </div>
+                                <div class="instrument">
+                                    <div class="instrument-label">Heading</div>
+                                    <div class="instrument-value" id="flight-heading">0°</div>
+                                </div>
+                                <div class="instrument">
+                                    <div class="instrument-label">Vertical Speed</div>
+                                    <div class="instrument-value" id="flight-vspeed">0 m/s</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Telemetry Panel -->
+                    <div class="flight-telemetry-panel">
+                        <!-- Drone Selection -->
+                        <div class="flight-section">
+                            <h3 class="flight-section-title">Active Drone</h3>
+                            <select id="flight-drone-select" class="mission-select">
+                                <option value="">Select drone</option>
+                            </select>
+                            <div id="flight-drone-status" class="status-indicator disconnected">
+                                Disconnected
+                            </div>
+                        </div>
+
+                        <!-- Mission Status -->
+                        <div class="flight-section">
+                            <h3 class="flight-section-title">Mission Status</h3>
+                            <select id="flight-mission-select" class="mission-select">
+                                <option value="">No mission loaded</option>
+                            </select>
+                            <div class="mission-progress">
+                                <div class="progress-label">
+                                    <span>Waypoint</span>
+                                    <span id="mission-waypoint-progress">0 / 0</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="mission-progress-fill" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Telemetry Data -->
+                        <div class="flight-section">
+                            <h3 class="flight-section-title">Telemetry</h3>
+                            <div class="telemetry-grid">
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Latitude</span>
+                                    <span class="telem-value" id="telem-lat">0.000000</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Longitude</span>
+                                    <span class="telem-value" id="telem-lng">0.000000</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Ground Speed</span>
+                                    <span class="telem-value" id="telem-gspeed">0.0 m/s</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Air Speed</span>
+                                    <span class="telem-value" id="telem-aspeed">0.0 m/s</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Battery</span>
+                                    <span class="telem-value" id="telem-battery">100%</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Voltage</span>
+                                    <span class="telem-value" id="telem-voltage">0.0 V</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Current</span>
+                                    <span class="telem-value" id="telem-current">0.0 A</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Distance Home</span>
+                                    <span class="telem-value" id="telem-dist">0 m</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Flight Time</span>
+                                    <span class="telem-value" id="telem-time">00:00</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">Satellites</span>
+                                    <span class="telem-value" id="telem-sats">0</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">HDOP</span>
+                                    <span class="telem-value" id="telem-hdop">0.0</span>
+                                </div>
+                                <div class="telemetry-item">
+                                    <span class="telem-label">RC Signal</span>
+                                    <span class="telem-value" id="telem-rc">0%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Flight Controls -->
+                        <div class="flight-section">
+                            <h3 class="flight-section-title">Flight Controls</h3>
+                            <div class="flight-control-buttons">
+                                <button id="arm-btn" class="btn-flight" disabled>
+                                    ARM
+                                </button>
+                                <button id="takeoff-btn" class="btn-flight" disabled>
+                                    TAKEOFF
+                                </button>
+                                <button id="land-btn" class="btn-flight" disabled>
+                                    LAND
+                                </button>
+                                <button id="return-btn" class="btn-flight-warning">
+                                    RETURN TO HOME
+                                </button>
+                                <button id="abort-btn" class="btn-flight-danger">
+                                    EMERGENCY ABORT
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- System Status -->
+                        <div class="flight-section">
+                            <h3 class="flight-section-title">System Status</h3>
+                            <div class="system-status-list">
+                                <div class="status-item ok">
+                                    <span class="status-dot"></span>
+                                    <span>GPS</span>
+                                </div>
+                                <div class="status-item ok">
+                                    <span class="status-dot"></span>
+                                    <span>IMU</span>
+                                </div>
+                                <div class="status-item ok">
+                                    <span class="status-dot"></span>
+                                    <span>Compass</span>
+                                </div>
+                                <div class="status-item ok">
+                                    <span class="status-dot"></span>
+                                    <span>Barometer</span>
+                                </div>
+                                <div class="status-item warning">
+                                    <span class="status-dot"></span>
+                                    <span>Telemetry</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mini Map Window (Draggable) -->
+                    <div class="mini-map-window" id="mini-map-window">
+                        <div class="mini-map-header" id="mini-map-header">
+                            <span class="mini-map-title">Navigation Display</span>
+                            <div class="mini-map-controls">
+                                <button class="mini-map-btn" id="toggle-arc-mode" title="Toggle ARC Mode">ARC</button>
+                                <button class="mini-map-btn" id="expand-mini-map" title="Expand">+</button>
+                                <button class="mini-map-btn" id="minimize-mini-map" title="Minimize">−</button>
+                            </div>
+                        </div>
+                        <div class="mini-map-content" id="mini-map-content">
+                            <div id="mini-map" class="mini-map"></div>
+                            <div class="arc-overlay" id="arc-overlay" style="display: none;">
+                                <canvas id="arc-canvas" class="arc-canvas"></canvas>
+                            </div>
+                            <div class="mini-map-info">
+                                <div class="map-info-item">
+                                    <span>HDG:</span>
+                                    <span id="mini-map-heading">0°</span>
+                                </div>
+                                <div class="map-info-item">
+                                    <span>Range:</span>
+                                    <span id="mini-map-range">1 km</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="mission-view" class="view">
+                <div class="mission-container">
+                    <!-- Left Sidebar - Mission Controls -->
+                    <aside class="mission-sidebar">
+                        <!-- Drone Selection -->
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Drone Selection</h3>
+                            <select id="mission-drone-select" class="mission-select">
+                                <option value="">Select a drone profile</option>
+                            </select>
+                            <div id="selected-drone-info" class="drone-info-compact" style="display: none;">
+                                <div class="info-row">
+                                    <span class="label">Type:</span>
+                                    <span id="info-type"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="label">Weight:</span>
+                                    <span id="info-weight"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="label">Max Flight Time:</span>
+                                    <span id="info-flight-time"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="label">Cruise Speed:</span>
+                                    <span id="info-cruise-speed"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mission Parameters -->
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Mission Parameters</h3>
+                            <div class="param-group">
+                                <label>Default Altitude (m)</label>
+                                <input type="number" id="default-altitude" value="50" min="0" max="500" step="1">
+                            </div>
+                            <div class="param-group">
+                                <label>Default Speed (m/s)</label>
+                                <input type="number" id="default-speed" value="0" step="0.1" placeholder="Use cruise speed">
+                            </div>
+                            <div class="param-group">
+                                <label>Safety Reserve (%)</label>
+                                <input type="number" id="safety-reserve" value="20" min="10" max="50" step="5">
+                            </div>
+                            <div class="param-group">
+                                <label>Wind Speed (m/s)</label>
+                                <input type="number" id="wind-speed" value="0" min="0" max="30" step="0.5">
+                            </div>
+                        </div>
+
+                        <!-- Waypoint List -->
+                        <div class="mission-section waypoint-section">
+                            <div class="section-header">
+                                <h3 class="mission-section-title">Waypoints</h3>
+                                <button id="clear-mission-btn" class="btn-icon" title="Clear all waypoints">
+                                    <span>Clear</span>
+                                </button>
+                            </div>
+                            <div id="waypoint-list" class="waypoint-list">
+                                <div class="empty-waypoints">
+                                    <p>Click on the map to add waypoints</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mission Actions -->
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Mission Actions</h3>
+                            <div class="action-buttons">
+                                <button id="set-home-btn" class="btn-secondary-mission" disabled>
+                                    Set Home Point
+                                </button>
+                                <button id="add-rtl-btn" class="btn-secondary-mission" disabled>
+                                    Add Return to Launch
+                                </button>
+                                <button id="optimize-path-btn" class="btn-secondary-mission" disabled>
+                                    Optimize Route
+                                </button>
+                                <button id="ai-suggest-btn" class="btn-secondary-mission coming-soon" disabled title="Coming Soon">
+                                    AI Route Suggestion
+                                    <span class="badge">Soon</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Save/Load Mission -->
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Mission Storage</h3>
+                            <div class="action-buttons">
+                                <button id="save-mission-btn" class="btn-secondary-mission" disabled>
+                                    Save Mission
+                                </button>
+                                <button id="load-missions-btn" class="btn-secondary-mission">
+                                    Load Mission
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Saved Missions List -->
+                        <div class="mission-section" id="saved-missions-section" style="display: none;">
+                            <div class="section-header">
+                                <h3 class="mission-section-title">Saved Missions</h3>
+                                <button id="close-saved-missions-btn" class="btn-icon">
+                                    Close
+                                </button>
+                            </div>
+                            <div id="saved-missions-list" class="saved-missions-list">
+                            </div>
+                        </div>
+
+                        <!-- Import/Export -->
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Mission File</h3>
+                            <div class="action-buttons">
+                                <button id="export-mission-btn" class="btn-secondary-mission" disabled>
+                                    Export Mission
+                                </button>
+                                <label class="btn-secondary-mission file-input-label">
+                                    Import Mission
+                                    <input type="file" id="import-mission-input" accept=".json" style="display: none;">
+                                </label>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- Main Map Area -->
+                    <div class="map-container">
+                        <div id="map" class="map"></div>
+                        
+                        <!-- Map Controls Overlay -->
+                        <div class="map-controls">
+                            <input type="text" id="search-location" class="search-input" placeholder="Search location...">
+                            <div class="control-group">
+                                <button id="locate-btn" class="control-btn" title="Center on your location">
+                                    <span class="icon">⊕</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Coordinates Display -->
+                        <div id="coordinates-display" class="coordinates-display">
+                            Lat: 0.0000, Lon: 0.0000
+                        </div>
+                    </div>
+
+                    <!-- Right Panel - Mission Summary -->
+                    <aside class="mission-summary-panel">
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Mission Summary</h3>
+                            <div id="mission-summary" class="summary-content">
+                                <div class="summary-item">
+                                    <span class="summary-label">Total Distance</span>
+                                    <span class="summary-value" id="summary-distance">0.00 km</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Flight Time</span>
+                                    <span class="summary-value" id="summary-time">0.0 min</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Battery Required</span>
+                                    <span class="summary-value" id="summary-battery">0%</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Battery Available</span>
+                                    <span class="summary-value" id="summary-battery-available">N/A</span>
+                                </div>
+                                <div class="summary-divider"></div>
+                                <div class="summary-item highlight">
+                                    <span class="summary-label">Mission Status</span>
+                                    <span class="summary-value" id="summary-status">No waypoints</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Flight Path Analysis -->
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Path Analysis</h3>
+                            <div class="analysis-content">
+                                <div class="analysis-item">
+                                    <span class="analysis-label">Waypoints</span>
+                                    <span class="analysis-value" id="analysis-waypoints">0</span>
+                                </div>
+                                <div class="analysis-item">
+                                    <span class="analysis-label">Segments</span>
+                                    <span class="analysis-value" id="analysis-segments">0</span>
+                                </div>
+                                <div class="analysis-item">
+                                    <span class="analysis-label">Avg Altitude</span>
+                                    <span class="analysis-value" id="analysis-altitude">0 m</span>
+                                </div>
+                                <div class="analysis-item">
+                                    <span class="analysis-label">Max Distance</span>
+                                    <span class="analysis-value" id="analysis-max-distance">0 m</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Elevation Profile -->
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Altitude Profile</h3>
+                            <canvas id="elevation-chart" class="elevation-chart"></canvas>
+                        </div>
+
+                        <!-- Mission Warnings -->
+                        <div class="mission-section">
+                            <h3 class="mission-section-title">Warnings & Alerts</h3>
+                            <div id="mission-warnings" class="warnings-content">
+                                <div class="warning-item info">
+                                    <span class="warning-icon">ℹ</span>
+                                    <span>Select a drone to start planning</span>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+    <script src="mission.js"></script>
+    <script src="flight.js"></script>
+</body>
+</html>
